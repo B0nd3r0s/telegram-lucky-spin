@@ -1,11 +1,17 @@
 
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const { createClient } = require('@supabase/supabase-js');
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
 // Import routes
 const authRoutes = require('./src/routes/auth');
@@ -24,11 +30,6 @@ const errorHandler = require('./src/middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('Failed to connect to MongoDB', err));
-
 // Middleware
 app.use(helmet()); // Security headers
 app.use(cors()); // Enable CORS
@@ -42,6 +43,12 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again after 15 minutes'
 });
 app.use('/api/', apiLimiter);
+
+// Make Supabase client available to all routes
+app.use((req, res, next) => {
+  req.supabase = supabase;
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);

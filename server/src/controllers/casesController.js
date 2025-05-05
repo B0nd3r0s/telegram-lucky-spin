@@ -1,14 +1,20 @@
 
-const Case = require('../models/Case');
-const Gift = require('../models/Gift');
-const Transaction = require('../models/Transaction');
-const User = require('../models/User');
 const { selectGiftByProbability } = require('../utils/telegramUtils');
 
 // Get all active cases
 exports.getCases = async (req, res, next) => {
   try {
-    const cases = await Case.find({ isActive: true });
+    const { supabase } = req;
+    
+    const { data: cases, error } = await supabase
+      .from('cases')
+      .select('*, possibleGifts:possible_gifts(*)')
+      .eq('is_active', true);
+    
+    if (error) {
+      return res.status(500).json({ message: 'Failed to fetch cases', error });
+    }
+    
     res.status(200).json(cases);
   } catch (error) {
     next(error);
@@ -18,13 +24,19 @@ exports.getCases = async (req, res, next) => {
 // Get a specific case by ID
 exports.getCaseById = async (req, res, next) => {
   try {
-    const caseItem = await Case.findById(req.params.id);
+    const { supabase } = req;
     
-    if (!caseItem) {
+    const { data: caseItem, error } = await supabase
+      .from('cases')
+      .select('*, possibleGifts:possible_gifts(*)')
+      .eq('id', req.params.id)
+      .single();
+    
+    if (error || !caseItem) {
       return res.status(404).json({ message: 'Case not found' });
     }
     
-    if (!caseItem.isActive) {
+    if (!caseItem.is_active) {
       return res.status(400).json({ message: 'This case is no longer available' });
     }
     
@@ -38,19 +50,29 @@ exports.getCaseById = async (req, res, next) => {
 exports.openCase = async (req, res, next) => {
   try {
     const { caseId } = req.body;
+    const { supabase } = req;
     const user = req.user;
     
     if (!caseId) {
       return res.status(400).json({ message: 'Case ID is required' });
     }
     
-    const caseItem = await Case.findById(caseId);
+    // Begin a Supabase transaction
+    // Note: Supabase JS client doesn't support transactions directly
+    // We'll use multiple operations and handle errors carefully
     
-    if (!caseItem) {
+    // Get the case
+    const { data: caseItem, error: caseError } = await supabase
+      .from('cases')
+      .select('*, possibleGifts:possible_gifts(*)')
+      .eq('id', caseId)
+      .single();
+    
+    if (caseError || !caseItem) {
       return res.status(404).json({ message: 'Case not found' });
     }
     
-    if (!caseItem.isActive) {
+    if (!caseItem.is_active) {
       return res.status(400).json({ message: 'This case is no longer available' });
     }
     
@@ -63,47 +85,52 @@ exports.openCase = async (req, res, next) => {
     const selectedGift = selectGiftByProbability(caseItem.possibleGifts);
     
     // Create a transaction for the case purchase
-    const transaction = new Transaction({
-      user: user._id,
-      type: 'case_purchase',
-      amount: -caseItem.price, // Negative amount for spending
-      status: 'completed',
-      case: caseItem._id
-    });
+    const { data: transaction, error: transactionError } = await supabase
+      .from('transactions')
+      .insert({
+        user_id: user.id,
+        type: 'case_purchase',
+        amount: -caseItem.price, // Negative amount for spending
+        status: 'completed',
+        case_id: caseItem.id
+      })
+      .select()
+      .single();
+    
+    if (transactionError) {
+      return res.status(500).json({ message: 'Failed to create transaction', error: transactionError });
+    }
     
     // Create the gift in user's inventory
-    const gift = new Gift({
-      user: user._id,
-      case: caseItem._id,
-      name: selectedGift.name,
-      imageUrl: selectedGift.imageUrl,
-      value: selectedGift.value,
-      isWithdrawn: false
-    });
+    const { data: gift, error: giftError } = await supabase
+      .from('gifts')
+      .insert({
+        user_id: user.id,
+        case_id: caseItem.id,
+        name: selectedGift.name,
+        image_url: selectedGift.image_url,
+        value: selectedGift.value,
+        is_withdrawn: false
+      })
+      .select()
+      .single();
+    
+    if (giftError) {
+      return res.status(500).json({ message: 'Failed to create gift', error: giftError });
+    }
     
     // Update user balance
-    user.balance -= caseItem.price;
+    const { error: userError } = await supabase
+      .from('users')
+      .update({ balance: user.balance - caseItem.price })
+      .eq('id', user.id);
     
-    // Save all changes in a transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
-    
-    try {
-      await transaction.save({ session });
-      await gift.save({ session });
-      await user.save({ session });
-      
-      await session.commitTransaction();
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+    if (userError) {
+      return res.status(500).json({ message: 'Failed to update balance', error: userError });
     }
     
     // Update gift with additional display info
-    const giftToReturn = gift.toObject();
-    giftToReturn.caseName = caseItem.name;
+    const giftToReturn = {...gift, caseName: caseItem.name};
     
     // Return the gift to the user
     res.status(200).json({
