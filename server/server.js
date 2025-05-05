@@ -1,5 +1,7 @@
 
+// Load environment variables from .env file first
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -7,11 +9,18 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+// Initialize Supabase client with proper error handling
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env file');
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+console.log('Successfully connected to Supabase');
 
 // Import routes
 const authRoutes = require('./src/routes/auth');
