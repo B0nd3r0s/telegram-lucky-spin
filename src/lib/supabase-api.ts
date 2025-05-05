@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { Case, Gift, LiveWin, RatingItem, User } from '@/types';
 
@@ -325,6 +324,7 @@ export async function getLiveWins(): Promise<LiveWin[]> {
 // Ratings / Top Players
 export async function getTopPlayers(): Promise<RatingItem[]> {
   try {
+    // Try to call the stored procedure first
     const { data, error } = await supabase.rpc('get_top_players', { limit_count: 10 });
     
     if (error || !data) {
@@ -366,7 +366,8 @@ export async function getTopPlayers(): Promise<RatingItem[]> {
       return result.slice(0, 10);
     }
     
-    return data.map(item => ({
+    // If the stored procedure exists and returns data
+    return data.map((item: any) => ({
       userId: item.user_id,
       username: item.username,
       photoUrl: item.photo_url,
