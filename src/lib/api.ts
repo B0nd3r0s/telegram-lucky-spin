@@ -1,3 +1,4 @@
+
 import { Case, Gift, LiveWin, RatingItem, User } from '@/types';
 import * as supabaseApi from './supabase-api';
 
@@ -56,20 +57,9 @@ export const api = {
   
   // Referrals
   getReferralStats: () => USE_MOCK_API ? mockApi.getReferralStats() : Promise.resolve({ code: 'REF123', count: 5, earnings: 50 }),
-  
-  // Admin endpoints
-  admin: {
-    getCases: () => USE_MOCK_API ? mockApi.admin.getCases() : supabaseApi.admin.getCases(),
-    createCase: (caseData: Partial<Case>) => USE_MOCK_API ? mockApi.admin.createCase(caseData) : supabaseApi.admin.createCase(caseData),
-    updateCase: (id: string, caseData: Partial<Case>) => USE_MOCK_API ? mockApi.admin.updateCase(id, caseData) : supabaseApi.admin.updateCase(id, caseData),
-    deleteCase: (id: string) => USE_MOCK_API ? mockApi.admin.deleteCase(id) : supabaseApi.admin.deleteCase(id),
-    getUsers: () => USE_MOCK_API ? mockApi.admin.getUsers() : Promise.resolve([]),
-    updateUser: (id: string, userData: Partial<User>) => USE_MOCK_API ? mockApi.admin.updateUser(id, userData) : Promise.resolve(null),
-    deleteUser: (id: string) => USE_MOCK_API ? mockApi.admin.deleteUser(id) : Promise.resolve({ success: true }),
-  },
 };
 
-// For the demo, let's keep the mock data functions
+// For the demo, let's implement the mock API functions
 export const mockApi = {
   getCases: (): Promise<Case[]> => {
     const mockCases: Case[] = [
@@ -111,6 +101,42 @@ export const mockApi = {
       },
     ];
     return Promise.resolve(mockCases);
+  },
+  
+  getCaseById: (id: string): Promise<Case | null> => {
+    return mockApi.getCases().then(cases => cases.find(c => c.id === id) || null);
+  },
+  
+  getCurrentUser: (): Promise<User> => {
+    return Promise.resolve({
+      id: 'user1',
+      telegramId: 12345678,
+      username: 'testuser',
+      photoUrl: '/placeholder.svg',
+      balance: 100,
+      role: 'user',
+      referralCode: 'REF123456',
+      referralBalance: 10,
+      referralCount: 2,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+  },
+  
+  updateUser: (data: Partial<User>): Promise<User> => {
+    return mockApi.getCurrentUser().then(user => ({ ...user, ...data }));
+  },
+  
+  connectWallet: (walletAddress: string): Promise<boolean> => {
+    return Promise.resolve(true);
+  },
+  
+  deposit: (amount: number): Promise<{ success: boolean, transaction: { id: string } }> => {
+    return Promise.resolve({ success: true, transaction: { id: `tx-${Date.now()}` } });
+  },
+  
+  withdraw: (giftId: string): Promise<boolean> => {
+    return Promise.resolve(true);
   },
   
   getLiveWins: (): Promise<LiveWin[]> => {
@@ -215,6 +241,48 @@ export const mockApi = {
     ];
     
     return Promise.resolve({ gift: mockGifts[0] });
+  },
+  
+  upgradeGift: (giftIds: string[]): Promise<{ newGift: Gift }> => {
+    return Promise.resolve({
+      newGift: {
+        id: `new-${Date.now()}`,
+        name: 'Upgraded Gift',
+        imageUrl: '/placeholder.svg',
+        value: 50,
+        isWithdrawn: false,
+        createdAt: new Date()
+      }
+    });
+  },
+  
+  getReferralStats: (): Promise<{ code: string; count: number; earnings: number }> => {
+    return Promise.resolve({ code: 'REF123456', count: 2, earnings: 10 });
+  },
+  
+  admin: {
+    getCases: (): Promise<Case[]> => mockApi.getCases(),
+    createCase: (caseData: Partial<Case>): Promise<Case | null> => {
+      const newCase: Case = {
+        id: `new-${Date.now()}`,
+        name: caseData.name || 'New Case',
+        imageUrl: caseData.imageUrl || '/placeholder.svg',
+        price: caseData.price || 10,
+        description: caseData.description || 'A new case',
+        possibleGifts: caseData.possibleGifts || []
+      };
+      return Promise.resolve(newCase);
+    },
+    updateCase: (id: string, caseData: Partial<Case>): Promise<Case | null> => {
+      return mockApi.getCaseById(id).then(originalCase => {
+        if (!originalCase) return null;
+        return { ...originalCase, ...caseData };
+      });
+    },
+    deleteCase: (id: string): Promise<boolean> => Promise.resolve(true),
+    getUsers: (): Promise<User[]> => Promise.resolve([]),
+    updateUser: (id: string, userData: Partial<User>): Promise<User | null> => Promise.resolve(null),
+    deleteUser: (id: string): Promise<{ success: boolean }> => Promise.resolve({ success: true }),
   }
 };
 

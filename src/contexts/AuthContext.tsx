@@ -76,6 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           referralCode: `REF${telegramUser.id.toString().substring(0, 6)}`,
           referralBalance: 0,
           referralCount: 0,
+          walletAddress: undefined, 
           createdAt: new Date(),
           updatedAt: new Date()
         };

@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   telegramId: number;
@@ -10,6 +9,7 @@ export interface User {
   referredBy?: string;
   referralBalance: number;
   referralCount: number;
+  walletAddress?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,12 +23,14 @@ export interface Gift {
   createdAt: Date;
 }
 
+// Add isActive property to Case interface
 export interface Case {
   id: string;
   name: string;
   imageUrl: string;
   price: number;
   description: string;
+  isActive?: boolean;
   possibleGifts: PossibleGift[];
 }
 

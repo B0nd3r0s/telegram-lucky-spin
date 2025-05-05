@@ -18,11 +18,12 @@ export async function getCurrentUser(telegramId: number): Promise<User | null> {
     username: data.username,
     photoUrl: data.photo_url,
     balance: data.balance,
-    role: data.role,
+    role: data.role as 'user' | 'admin',
     referralCode: data.referral_code,
     referredBy: data.referred_by,
     referralBalance: data.referral_balance,
     referralCount: data.referral_count,
+    walletAddress: data.wallet_address,
     createdAt: new Date(data.created_at),
     updatedAt: new Date(data.updated_at),
   };
@@ -58,11 +59,12 @@ export async function createOrUpdateUser(userData: Partial<User> & { telegramId:
       username: data.username,
       photoUrl: data.photo_url,
       balance: data.balance,
-      role: data.role,
+      role: data.role as 'user' | 'admin',
       referralCode: data.referral_code,
       referredBy: data.referred_by,
       referralBalance: data.referral_balance,
       referralCount: data.referral_count,
+      walletAddress: data.wallet_address,
       createdAt: new Date(data.created_at),
       updatedAt: new Date(data.updated_at),
     };
@@ -76,6 +78,7 @@ export async function createOrUpdateUser(userData: Partial<User> & { telegramId:
         first_name: userData.username || `user_${userData.telegramId}`,
         photo_url: userData.photoUrl || '',
         referral_code: `REF${userData.telegramId.toString().substring(0, 6)}`,
+        role: 'user',
       })
       .select('*')
       .single();
@@ -88,11 +91,12 @@ export async function createOrUpdateUser(userData: Partial<User> & { telegramId:
       username: data.username,
       photoUrl: data.photo_url,
       balance: data.balance,
-      role: data.role,
+      role: data.role as 'user' | 'admin',
       referralCode: data.referral_code,
       referredBy: data.referred_by,
       referralBalance: data.referral_balance,
       referralCount: data.referral_count,
+      walletAddress: data.wallet_address,
       createdAt: new Date(data.created_at),
       updatedAt: new Date(data.updated_at),
     };
@@ -140,6 +144,7 @@ export async function getCases(): Promise<Case[]> {
       imageUrl: caseItem.image_url,
       price: caseItem.price,
       description: caseItem.description,
+      isActive: caseItem.is_active,
       possibleGifts,
     });
   }
@@ -176,6 +181,7 @@ export async function getCaseById(id: string): Promise<Case | null> {
     imageUrl: caseData.image_url,
     price: caseData.price,
     description: caseData.description,
+    isActive: caseData.is_active,
     possibleGifts,
   };
 }
@@ -302,7 +308,7 @@ export async function getLiveWins(): Promise<LiveWin[]> {
   
   if (error || !data) return [];
   
-  return data.map(item => ({
+  return data.filter(item => item.users && item.cases).map(item => ({
     id: item.id,
     userId: item.users.id,
     username: item.users.username,
@@ -318,36 +324,58 @@ export async function getLiveWins(): Promise<LiveWin[]> {
 
 // Ratings / Top Players
 export async function getTopPlayers(): Promise<RatingItem[]> {
-  const { data, error } = await supabase.rpc('get_top_players', { limit_count: 10 });
+  try {
+    const { data, error } = await supabase.rpc('get_top_players', { limit_count: 10 });
+    
+    if (error || !data) {
+      // Fallback query if the stored procedure doesn't exist
+      const { data: giftsData, error: giftsError } = await supabase
+        .from('gifts')
+        .select('user_id, value')
+        .order('created_at', { ascending: false });
   
-  if (error || !data) {
-    // Fallback query if the stored procedure doesn't exist
-    const { data: fallbackData } = await supabase
-      .from('gifts')
-      .select(`
-        users:user_id (id, username, photo_url),
-        sum(value)
-      `)
-      .groupBy('users.id, users.username, users.photo_url')
-      .order('sum', { ascending: false })
-      .limit(10);
+      if (giftsError || !giftsData) return [];
+  
+      // Manual aggregation
+      const userWinnings = new Map<string, number>();
+      for (const gift of giftsData) {
+        const currentTotal = userWinnings.get(gift.user_id) || 0;
+        userWinnings.set(gift.user_id, currentTotal + gift.value);
+      }
+  
+      // Get user details
+      const userIds = Array.from(userWinnings.keys());
+      const { data: usersData } = await supabase
+        .from('users')
+        .select('id, username, photo_url')
+        .in('id', userIds);
+  
+      if (!usersData) return [];
+  
+      // Map users to their winnings
+      const result: RatingItem[] = usersData.map(user => ({
+        userId: user.id,
+        username: user.username,
+        photoUrl: user.photo_url,
+        totalWinnings: userWinnings.get(user.id) || 0
+      }));
+  
+      // Sort by winnings
+      result.sort((a, b) => b.totalWinnings - a.totalWinnings);
+  
+      return result.slice(0, 10);
+    }
     
-    if (!fallbackData) return [];
-    
-    return fallbackData.map(item => ({
-      userId: item.users.id,
-      username: item.users.username,
-      photoUrl: item.users.photo_url,
-      totalWinnings: item.sum,
+    return data.map(item => ({
+      userId: item.user_id,
+      username: item.username,
+      photoUrl: item.photo_url,
+      totalWinnings: item.total_winnings,
     }));
+  } catch (error) {
+    console.error('Error in getTopPlayers:', error);
+    return [];
   }
-  
-  return data.map(item => ({
-    userId: item.user_id,
-    username: item.username,
-    photoUrl: item.photo_url,
-    totalWinnings: item.total_winnings,
-  }));
 }
 
 // Inventory
@@ -416,6 +444,7 @@ export const admin = {
         imageUrl: caseItem.image_url,
         price: caseItem.price,
         description: caseItem.description,
+        isActive: caseItem.is_active,
         possibleGifts,
       });
     }
@@ -436,7 +465,7 @@ export const admin = {
         image_url: caseData.imageUrl,
         price: caseData.price,
         description: caseData.description || '',
-        is_active: true
+        is_active: caseData.isActive !== undefined ? caseData.isActive : true
       })
       .select()
       .single();
@@ -465,6 +494,7 @@ export const admin = {
       imageUrl: newCase.image_url,
       price: newCase.price,
       description: newCase.description,
+      isActive: newCase.is_active,
       possibleGifts: (gifts || []).map(gift => ({
         giftId: gift.id,
         name: gift.name,
@@ -484,7 +514,7 @@ export const admin = {
         image_url: caseData.imageUrl,
         price: caseData.price,
         description: caseData.description,
-        is_active: caseData.isActive !== undefined ? caseData.isActive : undefined
+        is_active: caseData.isActive
       })
       .eq('id', id)
       .select()
@@ -526,6 +556,7 @@ export const admin = {
       imageUrl: updatedCase.image_url,
       price: updatedCase.price,
       description: updatedCase.description,
+      isActive: updatedCase.is_active,
       possibleGifts: (gifts || []).map(gift => ({
         giftId: gift.id,
         name: gift.name,
