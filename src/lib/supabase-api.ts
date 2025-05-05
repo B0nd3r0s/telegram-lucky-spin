@@ -325,9 +325,9 @@ export async function getLiveWins(): Promise<LiveWin[]> {
 export async function getTopPlayers(): Promise<RatingItem[]> {
   try {
     // Try to call the stored procedure first
-    const { data, error } = await supabase.rpc('get_top_players', { 
+    const { data, error } = await supabase.rpc<any>('get_top_players', { 
       limit_count: 10 
-    } as { limit_count: number });
+    });
     
     if (error || !data) {
       // Fallback query if the stored procedure doesn't exist
@@ -590,5 +590,5 @@ export const admin = {
 
 // Create a stored function to get top players (call this only once)
 export async function createStoredProcedures() {
-  await supabase.rpc('create_get_top_players_function', {} as Record<string, never>);
+  await supabase.rpc<any>('create_get_top_players_function', {});
 }
