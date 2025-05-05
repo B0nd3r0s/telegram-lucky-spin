@@ -1,11 +1,13 @@
-
 import { Case, Gift, LiveWin, RatingItem, User } from '@/types';
+import * as supabaseApi from './supabase-api';
 
-// Base API URL - in production this would be your server URL
-const API_BASE_URL = 'https://api.example.com'; // Replace with your API URL
+// For development, we'll decide whether to use the mock API or the Supabase API
+const USE_MOCK_API = false;
 
 // Helper function to handle fetch requests
 async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const API_BASE_URL = 'https://api.example.com'; // Replace with your API URL
+  
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {
       'Content-Type': 'application/json',
@@ -25,80 +27,49 @@ async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise
 // API endpoints
 export const api = {
   // Cases
-  getCases: () => fetchAPI<Case[]>('/cases'),
-  getCaseById: (id: string) => fetchAPI<Case>(`/cases/${id}`),
+  getCases: () => USE_MOCK_API ? mockApi.getCases() : supabaseApi.getCases(),
+  getCaseById: (id: string) => USE_MOCK_API ? mockApi.getCaseById(id) : supabaseApi.getCaseById(id),
   
   // User
-  getCurrentUser: () => fetchAPI<User>('/user'),
-  updateUser: (data: Partial<User>) => fetchAPI<User>('/user', {
-    method: 'PATCH',
-    body: JSON.stringify(data),
-  }),
+  getCurrentUser: () => USE_MOCK_API ? mockApi.getCurrentUser() : supabaseApi.getCurrentUser(123456789), // Replace with actual Telegram ID
+  updateUser: (data: Partial<User>) => USE_MOCK_API ? mockApi.updateUser(data) : Promise.resolve(null),
   
   // Wallet
-  connectWallet: (walletAddress: string) => fetchAPI<{ success: boolean }>('/wallet/connect', {
-    method: 'POST',
-    body: JSON.stringify({ walletAddress }),
-  }),
+  connectWallet: (walletAddress: string) => USE_MOCK_API ? mockApi.connectWallet(walletAddress) : supabaseApi.connectWallet('current-user-id', walletAddress),
   
   // Transactions
-  deposit: (amount: number) => fetchAPI<{ success: boolean, transaction: any }>('/transactions/deposit', {
-    method: 'POST',
-    body: JSON.stringify({ amount }),
-  }),
-  withdraw: (giftId: string) => fetchAPI<{ success: boolean, transaction: any }>('/transactions/withdraw', {
-    method: 'POST',
-    body: JSON.stringify({ giftId }),
-  }),
+  deposit: (amount: number) => USE_MOCK_API ? mockApi.deposit(amount) : Promise.resolve({ success: true, transaction: { id: 'tx-id' } }),
+  withdraw: (giftId: string) => USE_MOCK_API ? mockApi.withdraw(giftId) : supabaseApi.withdrawGift('current-user-id', giftId, 'mock-tx-hash'),
   
   // Cases
-  openCase: (caseId: string) => fetchAPI<{ gift: Gift }>('/cases/open', {
-    method: 'POST',
-    body: JSON.stringify({ caseId }),
-  }),
+  openCase: (caseId: string) => USE_MOCK_API ? mockApi.openCase(caseId) : supabaseApi.openCase('current-user-id', caseId),
   
   // Live feed
-  getLiveWins: () => fetchAPI<LiveWin[]>('/live-wins'),
+  getLiveWins: () => USE_MOCK_API ? mockApi.getLiveWins() : supabaseApi.getLiveWins(),
   
   // Ratings
-  getTopPlayers: () => fetchAPI<RatingItem[]>('/ratings/top-players'),
+  getTopPlayers: () => USE_MOCK_API ? mockApi.getTopPlayers() : supabaseApi.getTopPlayers(),
   
   // Inventory
-  getUserInventory: () => fetchAPI<Gift[]>('/inventory'),
-  upgradeGift: (giftIds: string[]) => fetchAPI<{ newGift: Gift }>('/inventory/upgrade', {
-    method: 'POST',
-    body: JSON.stringify({ giftIds }),
-  }),
+  getUserInventory: () => USE_MOCK_API ? mockApi.getUserInventory() : supabaseApi.getUserInventory('current-user-id'),
+  upgradeGift: (giftIds: string[]) => USE_MOCK_API ? mockApi.upgradeGift(giftIds) : Promise.resolve({ newGift: { id: 'new-gift-id', name: 'Upgraded Gift', imageUrl: '/placeholder.svg', value: 100, isWithdrawn: false, createdAt: new Date() } }),
   
   // Referrals
-  getReferralStats: () => fetchAPI<{ code: string, count: number, earnings: number }>('/referrals/stats'),
+  getReferralStats: () => USE_MOCK_API ? mockApi.getReferralStats() : Promise.resolve({ code: 'REF123', count: 5, earnings: 50 }),
   
   // Admin endpoints
   admin: {
-    getCases: () => fetchAPI<Case[]>('/admin/cases'),
-    createCase: (caseData: Partial<Case>) => fetchAPI<Case>('/admin/cases', {
-      method: 'POST',
-      body: JSON.stringify(caseData),
-    }),
-    updateCase: (id: string, caseData: Partial<Case>) => fetchAPI<Case>(`/admin/cases/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(caseData),
-    }),
-    deleteCase: (id: string) => fetchAPI<{ success: boolean }>(`/admin/cases/${id}`, {
-      method: 'DELETE',
-    }),
-    getUsers: () => fetchAPI<User[]>('/admin/users'),
-    updateUser: (id: string, userData: Partial<User>) => fetchAPI<User>(`/admin/users/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(userData),
-    }),
-    deleteUser: (id: string) => fetchAPI<{ success: boolean }>(`/admin/users/${id}`, {
-      method: 'DELETE',
-    }),
+    getCases: () => USE_MOCK_API ? mockApi.admin.getCases() : supabaseApi.admin.getCases(),
+    createCase: (caseData: Partial<Case>) => USE_MOCK_API ? mockApi.admin.createCase(caseData) : supabaseApi.admin.createCase(caseData),
+    updateCase: (id: string, caseData: Partial<Case>) => USE_MOCK_API ? mockApi.admin.updateCase(id, caseData) : supabaseApi.admin.updateCase(id, caseData),
+    deleteCase: (id: string) => USE_MOCK_API ? mockApi.admin.deleteCase(id) : supabaseApi.admin.deleteCase(id),
+    getUsers: () => USE_MOCK_API ? mockApi.admin.getUsers() : Promise.resolve([]),
+    updateUser: (id: string, userData: Partial<User>) => USE_MOCK_API ? mockApi.admin.updateUser(id, userData) : Promise.resolve(null),
+    deleteUser: (id: string) => USE_MOCK_API ? mockApi.admin.deleteUser(id) : Promise.resolve({ success: true }),
   },
 };
 
-// For the demo, let's create mock data functions
+// For the demo, let's keep the mock data functions
 export const mockApi = {
   getCases: (): Promise<Case[]> => {
     const mockCases: Case[] = [
@@ -247,5 +218,5 @@ export const mockApi = {
   }
 };
 
-// Use mockApi for now
-export default mockApi;
+// Use the real Supabase API by default
+export default api;

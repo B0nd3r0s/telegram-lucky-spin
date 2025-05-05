@@ -9,7 +9,276 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      cases: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          image_url: string
+          is_active: boolean | null
+          name: string
+          price: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url: string
+          is_active?: boolean | null
+          name: string
+          price: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          image_url?: string
+          is_active?: boolean | null
+          name?: string
+          price?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      gifts: {
+        Row: {
+          case_id: string
+          created_at: string | null
+          id: string
+          image_url: string
+          is_withdrawn: boolean | null
+          name: string
+          updated_at: string | null
+          user_id: string
+          value: number
+          withdrawal_timestamp: string | null
+          withdrawal_tx_hash: string | null
+        }
+        Insert: {
+          case_id: string
+          created_at?: string | null
+          id?: string
+          image_url: string
+          is_withdrawn?: boolean | null
+          name: string
+          updated_at?: string | null
+          user_id: string
+          value: number
+          withdrawal_timestamp?: string | null
+          withdrawal_tx_hash?: string | null
+        }
+        Update: {
+          case_id?: string
+          created_at?: string | null
+          id?: string
+          image_url?: string
+          is_withdrawn?: boolean | null
+          name?: string
+          updated_at?: string | null
+          user_id?: string
+          value?: number
+          withdrawal_timestamp?: string | null
+          withdrawal_tx_hash?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gifts_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gifts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      possible_gifts: {
+        Row: {
+          case_id: string
+          chance: number
+          created_at: string | null
+          id: string
+          image_url: string
+          name: string
+          value: number
+        }
+        Insert: {
+          case_id: string
+          chance: number
+          created_at?: string | null
+          id?: string
+          image_url: string
+          name: string
+          value: number
+        }
+        Update: {
+          case_id?: string
+          chance?: number
+          created_at?: string | null
+          id?: string
+          image_url?: string
+          name?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "possible_gifts_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          amount: number
+          case_id: string | null
+          created_at: string | null
+          gift_id: string | null
+          id: string
+          notes: string | null
+          referral_id: string | null
+          status: string
+          tx_hash: string | null
+          type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          case_id?: string | null
+          created_at?: string | null
+          gift_id?: string | null
+          id?: string
+          notes?: string | null
+          referral_id?: string | null
+          status?: string
+          tx_hash?: string | null
+          type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          case_id?: string | null
+          created_at?: string | null
+          gift_id?: string | null
+          id?: string
+          notes?: string | null
+          referral_id?: string | null
+          status?: string
+          tx_hash?: string | null
+          type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: false
+            referencedRelation: "cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_gift_id_fkey"
+            columns: ["gift_id"]
+            isOneToOne: false
+            referencedRelation: "gifts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_referral_id_fkey"
+            columns: ["referral_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          balance: number | null
+          created_at: string | null
+          first_name: string
+          id: string
+          is_blocked: boolean | null
+          last_login: string | null
+          last_name: string | null
+          photo_url: string | null
+          referral_balance: number | null
+          referral_code: string | null
+          referral_count: number | null
+          referred_by: string | null
+          role: string
+          telegram_id: number
+          updated_at: string | null
+          username: string
+          wallet_address: string | null
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string | null
+          first_name: string
+          id?: string
+          is_blocked?: boolean | null
+          last_login?: string | null
+          last_name?: string | null
+          photo_url?: string | null
+          referral_balance?: number | null
+          referral_code?: string | null
+          referral_count?: number | null
+          referred_by?: string | null
+          role?: string
+          telegram_id: number
+          updated_at?: string | null
+          username: string
+          wallet_address?: string | null
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string | null
+          first_name?: string
+          id?: string
+          is_blocked?: boolean | null
+          last_login?: string | null
+          last_name?: string | null
+          photo_url?: string | null
+          referral_balance?: number | null
+          referral_code?: string | null
+          referral_count?: number | null
+          referred_by?: string | null
+          role?: string
+          telegram_id?: number
+          updated_at?: string | null
+          username?: string
+          wallet_address?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "users_referred_by_fkey"
+            columns: ["referred_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

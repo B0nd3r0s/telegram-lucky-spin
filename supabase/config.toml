@@ -1,1 +1,5 @@
+
 project_id = "evscodazjgxufyvvsxsw"
+
+[functions.select-gift]
+verify_jwt = true

@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { getTelegramUser, initTelegramWebApp } from '../lib/telegram';
 import { useToast } from '@/components/ui/use-toast';
+import * as supabaseApi from '@/lib/supabase-api';
 
 interface AuthContextType {
   user: User | null;
@@ -44,8 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const authenticateUser = async () => {
-    // In a real app, we would validate the user on the backend
-    // For now, we're simulating with the Telegram WebApp data
+    // Get user from Telegram WebApp data
     const telegramUser = getTelegramUser();
     
     if (!telegramUser) {
@@ -54,23 +54,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     
     try {
-      // Here we would make an API request to authenticate the user
-      // For now, we'll simulate a successful authentication
-      const mockUser: User = {
-        id: `user-${telegramUser.id}`,
+      // Create or update user in Supabase
+      const userData = await supabaseApi.createOrUpdateUser({
         telegramId: telegramUser.id,
         username: telegramUser.username || telegramUser.first_name,
         photoUrl: telegramUser.photo_url || 'https://via.placeholder.com/100',
-        balance: 100, // Mock balance
-        role: telegramUser.id === 123456789 ? 'admin' : 'user', // Mock admin check
-        referralCode: `REF${telegramUser.id.toString().substring(0, 6)}`,
-        referralBalance: 0,
-        referralCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
+      });
       
-      setUser(mockUser);
+      if (userData) {
+        setUser(userData);
+        setWalletConnected(!!userData.walletAddress);
+      } else {
+        // Fallback to mock data if Supabase call fails
+        const mockUser: User = {
+          id: `user-${telegramUser.id}`,
+          telegramId: telegramUser.id,
+          username: telegramUser.username || telegramUser.first_name,
+          photoUrl: telegramUser.photo_url || 'https://via.placeholder.com/100',
+          balance: 100, // Mock balance
+          role: telegramUser.id === 123456789 ? 'admin' : 'user', // Mock admin check
+          referralCode: `REF${telegramUser.id.toString().substring(0, 6)}`,
+          referralBalance: 0,
+          referralCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        setUser(mockUser);
+      }
     } catch (error) {
       console.error('Failed to authenticate user', error);
       throw error;
@@ -78,15 +89,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const connectWallet = async () => {
+    if (!user) return;
+    
     try {
       // In a real app, this would connect to the TON wallet
       // For now, we'll simulate a successful connection
       await new Promise(resolve => setTimeout(resolve, 1000));
-      setWalletConnected(true);
-      toast({
-        title: "Success",
-        description: "TON wallet connected",
-      });
+      
+      // Update user record with wallet address
+      const walletAddress = `ton-wallet-${Date.now()}`;
+      const success = await supabaseApi.connectWallet(user.id, walletAddress);
+      
+      if (success) {
+        setWalletConnected(true);
+        toast({
+          title: "Success",
+          description: "TON wallet connected",
+        });
+      } else {
+        throw new Error("Failed to connect wallet");
+      }
     } catch (error) {
       console.error('Failed to connect wallet', error);
       toast({
