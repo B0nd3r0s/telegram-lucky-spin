@@ -326,7 +326,7 @@ export async function getLiveWins(): Promise<LiveWin[]> {
 export async function getTopPlayers(): Promise<RatingItem[]> {
   try {
     // Try to call the stored procedure first
-    const { data, error } = await supabase.rpc(
+    const { data, error } = await (supabase.rpc as any)(
       'get_top_players', 
       { limit_count: 10 },
       { count: 'exact' }
@@ -593,7 +593,7 @@ export const admin = {
 
 // Create a stored function to get top players (call this only once)
 export async function createStoredProcedures() {
-  await supabase.rpc(
+  await (supabase.rpc as any)(
     'create_get_top_players_function',
     {},
     { count: 'exact' }
