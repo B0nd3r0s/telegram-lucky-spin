@@ -83,3 +83,34 @@ exports.selectGiftByProbability = (possibleGifts) => {
   // (This should not happen if chances sum to 100%)
   return possibleGifts[possibleGifts.length - 1];
 };
+
+/**
+ * Check if a user is an admin based on their Telegram ID
+ * @param {number} telegramId - Telegram user ID
+ * @returns {boolean} - Whether the user is an admin
+ */
+exports.isAdminByTelegramId = (telegramId) => {
+  const adminIds = process.env.ADMIN_TELEGRAM_IDS?.split(',') || [];
+  return adminIds.includes(telegramId.toString());
+};
+
+/**
+ * Get user information from Telegram Mini App init data
+ * @param {string} initDataString - The initData string from Telegram Mini App
+ * @returns {Object|null} - User information or null if invalid
+ */
+exports.getTelegramUserFromInitData = (initDataString) => {
+  const telegramData = this.verifyTelegramInitData(initDataString);
+  if (!telegramData || !telegramData.user) {
+    return null;
+  }
+  
+  return {
+    telegramId: telegramData.user.id,
+    username: telegramData.user.username,
+    firstName: telegramData.user.first_name,
+    lastName: telegramData.user.last_name || '',
+    photoUrl: telegramData.user.photo_url || '',
+    isAdmin: this.isAdminByTelegramId(telegramData.user.id)
+  };
+};

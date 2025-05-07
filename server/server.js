@@ -7,20 +7,20 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const { createClient } = require('@supabase/supabase-js');
+const mongoose = require('mongoose');
 
-// Initialize Supabase client with proper error handling
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+// Connect to MongoDB
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGODB_URI);
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    process.exit(1);
+  }
+};
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Error: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env file');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-console.log('Successfully connected to Supabase');
+connectDB();
 
 // Import routes
 const authRoutes = require('./src/routes/auth');
@@ -52,12 +52,6 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again after 15 minutes'
 });
 app.use('/api/', apiLimiter);
-
-// Make Supabase client available to all routes
-app.use((req, res, next) => {
-  req.supabase = supabase;
-  next();
-});
 
 // Routes
 app.use('/api/auth', authRoutes);

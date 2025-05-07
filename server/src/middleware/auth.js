@@ -1,5 +1,6 @@
 
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
 const authenticateToken = async (req, res, next) => {
   try {
@@ -12,18 +13,14 @@ const authenticateToken = async (req, res, next) => {
     
     const decodedToken = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Get user from Supabase
-    const { data: user, error } = await req.supabase
-      .from('users')
-      .select('*')
-      .eq('id', decodedToken.userId)
-      .single();
+    // Get user from MongoDB
+    const user = await User.findById(decodedToken.userId);
     
-    if (error || !user) {
+    if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }
     
-    if (user.is_blocked) {
+    if (user.isBlocked) {
       return res.status(403).json({ message: 'Your account has been blocked' });
     }
     

@@ -1,12 +1,12 @@
 
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 const { verifyTelegramInitData } = require('../utils/telegramUtils');
 
 // Authenticate user with Telegram data
 exports.login = async (req, res, next) => {
   try {
     const { initData } = req.body;
-    const { supabase } = req;
     
     // Verify Telegram init data
     const telegramData = verifyTelegramInitData(initData);
@@ -17,80 +17,53 @@ exports.login = async (req, res, next) => {
     const { id, username, first_name, last_name, photo_url } = telegramData.user;
     
     // Check if user exists, create if not
-    const { data: existingUser, error: queryError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('telegram_id', id)
-      .single();
+    let user = await User.findOne({ telegramId: id });
     
-    let user;
-    
-    if (!existingUser && !queryError) {
+    if (!user) {
       // Check if this user should be an admin
       const isAdmin = process.env.ADMIN_TELEGRAM_IDS.split(',').includes(id.toString());
       
       // Create new user
-      const { data: newUser, error: insertError } = await supabase
-        .from('users')
-        .insert({
-          telegram_id: id,
-          username: username || `user_${id}`,
-          first_name: first_name,
-          last_name: last_name || '',
-          photo_url: photo_url || '',
-          role: isAdmin ? 'admin' : 'user',
-          last_login: new Date().toISOString()
-        })
-        .select('*')
-        .single();
-        
-      if (insertError) {
-        return res.status(500).json({ message: 'Failed to create user', error: insertError });
-      }
+      user = new User({
+        telegramId: id,
+        username: username || `user_${id}`,
+        firstName: first_name,
+        lastName: last_name || '',
+        photoUrl: photo_url || '',
+        role: isAdmin ? 'admin' : 'user',
+        lastLogin: new Date()
+      });
       
-      user = newUser;
+      await user.save();
     } else {
       // Update user details in case they changed
-      const { data: updatedUser, error: updateError } = await supabase
-        .from('users')
-        .update({
-          username: username || existingUser.username,
-          first_name: first_name,
-          last_name: last_name || '',
-          photo_url: photo_url || existingUser.photo_url,
-          last_login: new Date().toISOString()
-        })
-        .eq('telegram_id', id)
-        .select('*')
-        .single();
+      user.username = username || user.username;
+      user.firstName = first_name;
+      user.lastName = last_name || '';
+      user.photoUrl = photo_url || user.photoUrl;
+      user.lastLogin = new Date();
       
-      if (updateError) {
-        return res.status(500).json({ message: 'Failed to update user', error: updateError });
-      }
-      
-      user = updatedUser;
+      await user.save();
     }
     
     // Check referral if provided
     const { ref } = req.query;
-    if (ref && !user.referred_by) {
-      const { data: referrer } = await supabase
-        .from('users')
-        .select('id')
-        .eq('referral_code', ref)
-        .single();
+    if (ref && !user.referredBy) {
+      const referrer = await User.findOne({ referralCode: ref });
       
-      if (referrer && referrer.id !== user.id) {
-        await supabase
-          .from('users')
-          .update({ referred_by: referrer.id })
-          .eq('id', user.id);
+      if (referrer && referrer._id.toString() !== user._id.toString()) {
+        user.referredBy = referrer._id;
+        await user.save();
+        
+        // Update referrer's stats
+        referrer.referralCount += 1;
+        await referrer.save();
       }
     }
     
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id }, 
+      { userId: user._id }, 
       process.env.JWT_SECRET, 
       { expiresIn: process.env.JWT_EXPIRATION }
     );
@@ -99,15 +72,15 @@ exports.login = async (req, res, next) => {
       message: 'Authentication successful',
       token,
       user: {
-        id: user.id,
-        telegramId: user.telegram_id,
+        id: user._id,
+        telegramId: user.telegramId,
         username: user.username,
-        photoUrl: user.photo_url,
+        photoUrl: user.photoUrl,
         balance: user.balance,
         role: user.role,
-        referralCode: user.referral_code,
-        referralBalance: user.referral_balance,
-        referralCount: user.referral_count
+        referralCode: user.referralCode,
+        referralBalance: user.referralBalance,
+        referralCount: user.referralCount
       }
     });
   } catch (error) {
@@ -121,16 +94,16 @@ exports.getProfile = async (req, res, next) => {
     const user = req.user;
     
     res.status(200).json({
-      id: user.id,
-      telegramId: user.telegram_id,
+      id: user._id,
+      telegramId: user.telegramId,
       username: user.username,
-      photoUrl: user.photo_url,
+      photoUrl: user.photoUrl,
       balance: user.balance,
       role: user.role,
-      referralCode: user.referral_code,
-      referralBalance: user.referral_balance,
-      referralCount: user.referral_count,
-      walletConnected: !!user.wallet_address
+      referralCode: user.referralCode,
+      referralBalance: user.referralBalance,
+      referralCount: user.referralCount,
+      walletConnected: !!user.walletAddress
     });
   } catch (error) {
     next(error);
@@ -141,21 +114,14 @@ exports.getProfile = async (req, res, next) => {
 exports.connectWallet = async (req, res, next) => {
   try {
     const { walletAddress } = req.body;
-    const { supabase } = req;
     
     if (!walletAddress) {
       return res.status(400).json({ message: 'Wallet address required' });
     }
     
     // Update user's wallet address
-    const { error } = await supabase
-      .from('users')
-      .update({ wallet_address: walletAddress })
-      .eq('id', req.user.id);
-    
-    if (error) {
-      return res.status(500).json({ message: 'Failed to connect wallet', error });
-    }
+    req.user.walletAddress = walletAddress;
+    await req.user.save();
     
     res.status(200).json({
       message: 'Wallet connected successfully',
