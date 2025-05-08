@@ -1,0 +1,46 @@
+
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: telegram-lucky-spin-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: telegram-lucky-spin
+    restart: unless-stopped
+
+  server:
+    build: ./server
+    container_name: telegram-lucky-spin-server
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/telegram-lucky-spin
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=7d
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - ADMIN_TELEGRAM_IDS=${ADMIN_TELEGRAM_IDS}
+      - TON_API_KEY=${TON_API_KEY}
+      - TON_API_ENDPOINT=${TON_API_ENDPOINT}
+      - TON_WALLET_ADDRESS=${TON_WALLET_ADDRESS}
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+
+  client:
+    build: .
+    container_name: telegram-lucky-spin-client
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:

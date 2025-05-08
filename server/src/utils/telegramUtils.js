@@ -2,115 +2,194 @@
 const crypto = require('crypto');
 
 /**
- * Verify Telegram Mini App init data
- * @param {string} initDataString - The initData string from Telegram Mini App
- * @returns {Object|null} - Parsed and verified data or null if invalid
+ * Validates Telegram initData to ensure it's authentic
+ * @param {string} initData - The initData string from Telegram Mini App
+ * @param {string} botToken - Your bot's token
+ * @returns {boolean} Whether the initData is valid
  */
-exports.verifyTelegramInitData = (initDataString) => {
+const validateTelegramWebAppData = (initData, botToken) => {
   try {
-    // Parse the initData string into a URLSearchParams object
-    const initData = new URLSearchParams(initDataString);
+    const searchParams = new URLSearchParams(initData);
+    const hash = searchParams.get('hash');
     
-    // Extract the hash and data to validate
-    const hash = initData.get('hash');
-    initData.delete('hash');
+    if (!hash) return false;
     
-    // Sort the parameters alphabetically
-    const dataToCheck = [];
-    for (const [key, value] of [...initData.entries()].sort()) {
-      dataToCheck.push(`${key}=${value}`);
-    }
+    // Remove hash from the data
+    searchParams.delete('hash');
     
-    // Create a data check string
-    const dataCheckString = dataToCheck.join('\n');
+    // Sort in alphabetical order
+    const sortedParams = Array.from(searchParams.entries())
+      .sort(([a], [b]) => a.localeCompare(b));
     
-    // Create an HMAC using the bot token
-    const secretKey = crypto.createHash('sha256')
-      .update(process.env.TELEGRAM_BOT_TOKEN)
+    // Create a data string
+    const dataString = sortedParams
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    
+    // Create a secret key from the bot token
+    const secretKey = crypto.createHmac('sha256', 'WebAppData')
+      .update(botToken)
       .digest();
-      
-    const hmac = crypto.createHmac('sha256', secretKey)
-      .update(dataCheckString)
+    
+    // Calculate the hash
+    const calculatedHash = crypto.createHmac('sha256', secretKey)
+      .update(dataString)
       .digest('hex');
     
-    // Verify that the hash matches our calculated hmac
-    if (hmac !== hash) {
-      console.warn('Telegram data verification failed: Invalid hash');
-      return null;
-    }
-    
-    // Parse the user data
-    const userData = JSON.parse(initData.get('user') || '{}');
-    
-    // Return the verified data
-    return {
-      user: userData,
-      auth_date: initData.get('auth_date'),
-      query_id: initData.get('query_id'),
-    };
+    return calculatedHash === hash;
   } catch (error) {
-    console.error('Error verifying Telegram data:', error);
-    return null;
+    console.error('Error validating Telegram data:', error);
+    return false;
   }
 };
 
 /**
- * Generate a random string to use as CSRF token
- * @param {number} length - The length of the string to generate
- * @returns {string} - Random string
+ * Parse Telegram initData into a user object
+ * @param {string} initData - The initData string from Telegram Mini App
+ * @returns {Object|null} Parsed user data or null if invalid
  */
-exports.generateRandomString = (length = 20) => {
-  return crypto.randomBytes(length).toString('hex');
+const parseTelegramInitData = (initData) => {
+  try {
+    // For URL-encoded initData
+    const data = new URLSearchParams(initData);
+    const user = data.get('user');
+    
+    if (!user) return null;
+    
+    return JSON.parse(decodeURIComponent(user));
+  } catch (error) {
+    try {
+      // For JSON encoded initData
+      const data = JSON.parse(initData);
+      return data.user || null;
+    } catch (innerError) {
+      console.error('Error parsing Telegram init data:', innerError);
+      return null;
+    }
+  }
 };
 
 /**
- * Calculate the probability of a gift based on its chance
- * @param {Array} possibleGifts - Array of possible gifts with their chances
- * @returns {Object} - The selected gift
+ * Select a gift based on probabilities
+ * @param {Array} possibleGifts - Array of gifts with chance values
+ * @returns {Object} The selected gift
  */
-exports.selectGiftByProbability = (possibleGifts) => {
-  const random = Math.random() * 100;
+const selectGiftByProbability = (possibleGifts) => {
+  // Sort gifts by chance (descending)
+  const sortedGifts = [...possibleGifts].sort((a, b) => b.chance - a.chance);
+  
+  // Generate a random number between 0 and 100
+  const randomValue = Math.random() * 100;
+  
   let cumulativeChance = 0;
   
-  for (const gift of possibleGifts) {
+  // Find the gift based on its chance
+  for (const gift of sortedGifts) {
     cumulativeChance += gift.chance;
-    if (random <= cumulativeChance) {
+    if (randomValue <= cumulativeChance) {
       return gift;
     }
   }
   
-  // Fallback to the last gift if no gift is selected
-  // (This should not happen if chances sum to 100%)
-  return possibleGifts[possibleGifts.length - 1];
+  // Fallback to the last gift (should rarely happen due to rounding errors)
+  return sortedGifts[sortedGifts.length - 1];
 };
 
 /**
- * Check if a user is an admin based on their Telegram ID
- * @param {number} telegramId - Telegram user ID
- * @returns {boolean} - Whether the user is an admin
+ * Calculate upgrade result based on input gifts and upgrade mode
+ * @param {Array} gifts - Array of gift objects to upgrade
+ * @param {string} mode - 'combine' (combine 2 gifts) or 'upgrade' (upgrade 1 gift)
+ * @returns {Object} The upgrade result
  */
-exports.isAdminByTelegramId = (telegramId) => {
-  const adminIds = process.env.ADMIN_TELEGRAM_IDS?.split(',') || [];
-  return adminIds.includes(telegramId.toString());
-};
-
-/**
- * Get user information from Telegram Mini App init data
- * @param {string} initDataString - The initData string from Telegram Mini App
- * @returns {Object|null} - User information or null if invalid
- */
-exports.getTelegramUserFromInitData = (initDataString) => {
-  const telegramData = this.verifyTelegramInitData(initDataString);
-  if (!telegramData || !telegramData.user) {
-    return null;
+const calculateUpgrade = (gifts, mode) => {
+  if (mode === 'combine') {
+    // Combine two gifts (mode 1)
+    if (gifts.length !== 2) {
+      throw new Error('Combine mode requires exactly 2 gifts');
+    }
+    
+    const totalValue = gifts.reduce((sum, gift) => sum + gift.value, 0);
+    
+    // Apply multiplier based on random chance
+    const rand = Math.random();
+    let multiplier = 1.0; // Default, no change
+    
+    if (rand < 0.1) {
+      // 10% chance of x0.8 (downgrade)
+      multiplier = 0.8;
+    } else if (rand < 0.4) {
+      // 30% chance of x1.0 (same value)
+      multiplier = 1.0;
+    } else if (rand < 0.8) {
+      // 40% chance of x1.2
+      multiplier = 1.2;
+    } else {
+      // 20% chance of x1.5
+      multiplier = 1.5;
+    }
+    
+    const newValue = Math.round(totalValue * multiplier);
+    
+    return {
+      success: true,
+      value: newValue,
+      multiplier
+    };
+    
+  } else if (mode === 'upgrade') {
+    // Upgrade single gift (mode 2)
+    if (gifts.length !== 1) {
+      throw new Error('Upgrade mode requires exactly 1 gift');
+    }
+    
+    const gift = gifts[0];
+    const multipliers = [0, 1.5, 2, 3, 5, 10, 20];
+    const weights = [15, 30, 25, 15, 10, 4, 1]; // Percentages
+    
+    // Calculate weighted random multiplier
+    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+    let random = Math.random() * totalWeight;
+    let selectedIndex = 0;
+    
+    for (let i = 0; i < weights.length; i++) {
+      random -= weights[i];
+      if (random <= 0) {
+        selectedIndex = i;
+        break;
+      }
+    }
+    
+    const multiplier = multipliers[selectedIndex];
+    const success = multiplier > 0;
+    const newValue = Math.round(gift.value * multiplier);
+    
+    return {
+      success,
+      value: newValue,
+      multiplier
+    };
   }
   
-  return {
-    telegramId: telegramData.user.id,
-    username: telegramData.user.username,
-    firstName: telegramData.user.first_name,
-    lastName: telegramData.user.last_name || '',
-    photoUrl: telegramData.user.photo_url || '',
-    isAdmin: this.isAdminByTelegramId(telegramData.user.id)
-  };
+  throw new Error('Invalid upgrade mode');
+};
+
+/**
+ * Schedule auto-update of prizes (every hour)
+ * @param {Function} updateFunction - Function to call for updates
+ */
+const scheduleAutoUpdate = (updateFunction) => {
+  // Call immediately on startup
+  updateFunction();
+  
+  // Schedule for every hour
+  const oneHour = 60 * 60 * 1000;
+  setInterval(updateFunction, oneHour);
+};
+
+module.exports = {
+  validateTelegramWebAppData,
+  parseTelegramInitData,
+  selectGiftByProbability,
+  calculateUpgrade,
+  scheduleAutoUpdate
 };

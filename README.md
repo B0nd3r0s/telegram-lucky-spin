@@ -1,73 +1,126 @@
-# Welcome to your Lovable project
 
-## Project info
+# Telegram Lucky Spin
 
-**URL**: https://lovable.dev/projects/36f10a9b-b7af-4733-971e-f5e9b9c51289
+A Telegram Mini App for opening cases and winning prizes, with TON blockchain integration.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- 🎮 Case opening with chances for winning different prizes
+- 💰 TON blockchain integration for deposits and withdrawals
+- 🔄 Gift upgrade system with two modes
+- 👑 User rankings and live feed
+- 🎁 Invitation and referral system
+- 📊 Admin panel for managing cases, users, and finances
 
-**Use Lovable**
+## Getting Started
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/36f10a9b-b7af-4733-971e-f5e9b9c51289) and start prompting.
+### Prerequisites
 
-Changes made via Lovable will be committed automatically to this repo.
+- [Docker](https://www.docker.com/get-started)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+- [Telegram Bot Token](https://core.telegram.org/bots#creating-a-new-bot)
+- [TON API Key](https://toncenter.com/api/v2/) (for blockchain integration)
 
-**Use your preferred IDE**
+### Setup
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/telegram-lucky-spin.git
+   cd telegram-lucky-spin
+   ```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+2. Create your environment files:
+   ```bash
+   cp .env.example .env
+   cp server/.env.example server/.env
+   ```
 
-Follow these steps:
+3. Edit the `.env` and `server/.env` files with your configuration:
+   - Set `TELEGRAM_BOT_TOKEN` to your Telegram bot token
+   - Set `TON_API_KEY` to your TON API key
+   - Set `TON_WALLET_ADDRESS` to your TON wallet address
+   - Set `ADMIN_TELEGRAM_IDS` to comma-separated list of admin Telegram IDs
+   - Generate a random string for `JWT_SECRET`
+   - Adjust other settings as needed
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### Deployment with Docker
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+1. Build and start the containers:
+   ```bash
+   docker-compose up -d
+   ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+2. The application should now be running at:
+   - Client: http://localhost (port 80)
+   - Server API: http://localhost:3000
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+3. Access the MongoDB database:
+   - Connection string: `mongodb://localhost:27017/telegram-lucky-spin`
 
-**Edit a file directly in GitHub**
+### Manual Development Setup
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+#### Server Setup
 
-**Use GitHub Codespaces**
+1. Navigate to the server directory:
+   ```bash
+   cd server
+   ```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-## What technologies are used for this project?
+3. Start the server:
+   ```bash
+   npm run dev
+   ```
 
-This project is built with:
+#### Client Setup
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+1. Navigate to the project root:
+   ```bash
+   cd ..
+   ```
 
-## How can I deploy this project?
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-Simply open [Lovable](https://lovable.dev/projects/36f10a9b-b7af-4733-971e-f5e9b9c51289) and click on Share -> Publish.
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-## Can I connect a custom domain to my Lovable project?
+## Application Structure
 
-Yes, you can!
+- `/src` - React frontend code
+  - `/components` - Reusable UI components
+  - `/pages` - Application pages
+  - `/lib` - Utilities and helpers
+  - `/contexts` - React context providers
+  - `/hooks` - Custom React hooks
+  - `/types` - TypeScript type definitions
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- `/server` - Node.js backend code
+  - `/src/controllers` - API controllers
+  - `/src/middleware` - Express middleware
+  - `/src/models` - MongoDB models
+  - `/src/routes` - API routes
+  - `/src/utils` - Utility functions
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Integrating with Telegram
+
+1. Set up your Telegram bot with BotFather
+2. Configure the Telegram Mini App settings
+3. Add the bot to your Telegram channel or group
+4. Share the Mini App link with your users
+
+## Support
+
+If you have any questions or need assistance, please raise an issue in the repository.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

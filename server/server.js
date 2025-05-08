@@ -31,10 +31,18 @@ const liveWinsRoutes = require('./src/routes/liveWins');
 const ratingsRoutes = require('./src/routes/ratings');
 const referralsRoutes = require('./src/routes/referrals');
 const adminRoutes = require('./src/routes/admin');
+const upgradeRoutes = require('./src/routes/upgrade');
 
 // Import middleware
 const { authenticateToken } = require('./src/middleware/auth');
 const errorHandler = require('./src/middleware/errorHandler');
+
+// Initialize Telegram prices update scheduler
+const { scheduleAutoUpdate } = require('./src/utils/telegramUtils');
+const { updatePrices } = require('./src/controllers/adminController');
+
+// Schedule automatic price updates
+scheduleAutoUpdate(updatePrices);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -62,6 +70,7 @@ app.use('/api/live-wins', liveWinsRoutes);
 app.use('/api/ratings', ratingsRoutes);
 app.use('/api/referrals', authenticateToken, referralsRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
+app.use('/api/upgrade', authenticateToken, upgradeRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
