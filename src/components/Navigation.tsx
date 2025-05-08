@@ -1,10 +1,13 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Medal, PackageOpen, Users, User } from 'lucide-react';
+import { Home, Medal, PackageOpen, Users, User, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Navigation: React.FC = () => {
+  const { user } = useAuth();
+  
   const navItems = [
     { icon: Home, label: 'Home', path: '/' },
     { icon: Medal, label: 'Rating', path: '/rating' },
@@ -12,6 +15,11 @@ const Navigation: React.FC = () => {
     { icon: Users, label: 'Invite', path: '/invite' },
     { icon: User, label: 'Profile', path: '/profile' },
   ];
+  
+  // Add admin panel link only for users with admin role
+  if (user?.role === 'admin') {
+    navItems.push({ icon: Settings, label: 'Admin', path: '/admin' });
+  }
   
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-card border-t border-muted p-2 z-10">

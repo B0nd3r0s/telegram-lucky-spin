@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,17 +14,30 @@ import {
   Edit, 
   Trash, 
   Ban, 
-  Check 
+  Check,
+  Wallet,
+  DollarSign,
+  User
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 
-// Определяем интерфейсы для типов данных
+// Define interfaces for data types
 interface AdminUser {
   _id: string;
   telegramId: number;
@@ -61,6 +74,16 @@ interface AdminStats {
   casesOpened: number;
   totalVolume: number;
   profit: number;
+  today: {
+    revenue: number;
+    casesOpened: number;
+  };
+}
+
+interface WalletInfo {
+  walletAddress: string;
+  walletBalance: number;
+  withdrawals: any[];
 }
 
 const API_URL = '/api/admin';
@@ -71,8 +94,19 @@ const Admin: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [selectedCase, setSelectedCase] = useState<AdminCase | null>(null);
+  const [confirmationDialog, setConfirmationDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   
-  // Функции для работы с API
+  // API functions
   const fetchStats = async (): Promise<AdminStats> => {
     const response = await fetch(`${API_URL}/stats`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
@@ -81,13 +115,15 @@ const Admin: React.FC = () => {
     return response.json();
   };
   
-  const fetchUsers = async (): Promise<AdminUser[]> => {
-    const response = await fetch(`${API_URL}/users?${searchQuery ? `username=${searchQuery}` : ''}`, {
+  const fetchUsers = async (): Promise<{users: AdminUser[], pagination: any}> => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.append('search', searchQuery);
+    
+    const response = await fetch(`${API_URL}/users?${params.toString()}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     });
     if (!response.ok) throw new Error('Failed to fetch users');
-    const data = await response.json();
-    return data.users;
+    return response.json();
   };
   
   const fetchCases = async (): Promise<AdminCase[]> => {
@@ -98,7 +134,15 @@ const Admin: React.FC = () => {
     return response.json();
   };
   
-  // Запросы данных
+  const fetchWalletInfo = async (): Promise<WalletInfo> => {
+    const response = await fetch(`${API_URL}/wallet`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch wallet info');
+    return response.json();
+  };
+  
+  // Query hooks
   const { 
     data: stats, 
     isLoading: isLoadingStats,
@@ -110,7 +154,7 @@ const Admin: React.FC = () => {
   });
   
   const {
-    data: users,
+    data: usersData,
     isLoading: isLoadingUsers,
     refetch: refetchUsers
   } = useQuery({
@@ -129,7 +173,17 @@ const Admin: React.FC = () => {
     enabled: user?.role === 'admin' && activeTab === 'cases'
   });
   
-  // Мутации для изменения данных
+  const {
+    data: walletInfo,
+    isLoading: isLoadingWallet,
+    refetch: refetchWalletInfo
+  } = useQuery({
+    queryKey: ['adminWallet'],
+    queryFn: fetchWalletInfo,
+    enabled: user?.role === 'admin' && activeTab === 'wallet'
+  });
+  
+  // Mutations
   const blockUserMutation = useMutation({
     mutationFn: async ({ userId, isBlocked }: { userId: string, isBlocked: boolean }) => {
       const response = await fetch(`${API_URL}/users/${userId}`, {
@@ -138,7 +192,7 @@ const Admin: React.FC = () => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}` 
         },
-        body: JSON.stringify({ isBlocked })
+        body: JSON.stringify({ isBlocked, confirmation: true })
       });
       
       if (!response.ok) throw new Error('Failed to update user');
@@ -160,9 +214,145 @@ const Admin: React.FC = () => {
     }
   });
   
-  // Обработчики действий с пользователями
+  const updateUserRoleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string, role: 'user' | 'admin' }) => {
+      const response = await fetch(`${API_URL}/users/${userId}`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({ role, confirmation: true })
+      });
+      
+      if (!response.ok) throw new Error('Failed to update user role');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "User role has been updated",
+      });
+      refetchUsers();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+  
+  const deleteCaseMutation = useMutation({
+    mutationFn: async (caseId: string) => {
+      const response = await fetch(`${API_URL}/cases/${caseId}`, {
+        method: 'DELETE',
+        headers: { 
+          Authorization: `Bearer ${localStorage.getItem('token')}` 
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to delete case');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Case has been deleted",
+      });
+      refetchCases();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+  
+  const updateWalletMutation = useMutation({
+    mutationFn: async (walletAddress: string) => {
+      const response = await fetch(`${API_URL}/wallet`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({ walletAddress, confirmation: true })
+      });
+      
+      if (!response.ok) throw new Error('Failed to update wallet');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Wallet address has been updated",
+      });
+      refetchWalletInfo();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+  
+  // Action handlers
   const handleBlockUser = (userId: string, currentStatus: boolean) => {
-    blockUserMutation.mutate({ userId, isBlocked: !currentStatus });
+    setConfirmationDialog({
+      isOpen: true,
+      title: currentStatus ? 'Unblock User' : 'Block User',
+      description: currentStatus 
+        ? 'Are you sure you want to unblock this user? They will regain access to the platform.'
+        : 'Are you sure you want to block this user? They will lose access to the platform.',
+      onConfirm: () => {
+        blockUserMutation.mutate({ userId, isBlocked: !currentStatus });
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+  
+  const handleChangeUserRole = (userId: string, currentRole: 'user' | 'admin') => {
+    const newRole = currentRole === 'user' ? 'admin' : 'user';
+    
+    setConfirmationDialog({
+      isOpen: true,
+      title: `Change User Role to ${newRole}`,
+      description: `Are you sure you want to change this user's role to ${newRole}? This will ${newRole === 'admin' ? 'grant them administrative privileges' : 'remove their administrative privileges'}.`,
+      onConfirm: () => {
+        updateUserRoleMutation.mutate({ userId, role: newRole });
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+  
+  const handleDeleteCase = (caseId: string, caseName: string) => {
+    setConfirmationDialog({
+      isOpen: true,
+      title: 'Delete Case',
+      description: `Are you sure you want to delete the case "${caseName}"? This action cannot be undone.`,
+      onConfirm: () => {
+        deleteCaseMutation.mutate(caseId);
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+  
+  const handleUpdateWallet = (newAddress: string) => {
+    setConfirmationDialog({
+      isOpen: true,
+      title: 'Update TON Wallet',
+      description: `Are you sure you want to change the TON wallet address to ${newAddress}? This will affect all future transactions.`,
+      onConfirm: () => {
+        updateWalletMutation.mutate(newAddress);
+        setConfirmationDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
   
   // Only admin can access this page
@@ -184,10 +374,19 @@ const Admin: React.FC = () => {
         </h1>
         
         <Tabs defaultValue="stats" value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-3 mb-6">
-            <TabsTrigger value="stats" className="flex items-center gap-1"><BarChart3 className="w-4 h-4" /> Stats</TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-1"><Users className="w-4 h-4" /> Users</TabsTrigger>
-            <TabsTrigger value="cases" className="flex items-center gap-1"><Package className="w-4 h-4" /> Cases</TabsTrigger>
+          <TabsList className="grid grid-cols-4 mb-6">
+            <TabsTrigger value="stats" className="flex items-center gap-1">
+              <BarChart3 className="w-4 h-4" /> Stats
+            </TabsTrigger>
+            <TabsTrigger value="users" className="flex items-center gap-1">
+              <Users className="w-4 h-4" /> Users
+            </TabsTrigger>
+            <TabsTrigger value="cases" className="flex items-center gap-1">
+              <Package className="w-4 h-4" /> Cases
+            </TabsTrigger>
+            <TabsTrigger value="wallet" className="flex items-center gap-1">
+              <Wallet className="w-4 h-4" /> Wallet
+            </TabsTrigger>
           </TabsList>
           
           {/* Statistics Tab */}
@@ -201,8 +400,8 @@ const Admin: React.FC = () => {
             </div>
             
             {isLoadingStats ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map(i => (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map(i => (
                   <Card key={i} className="p-4 animate-pulse">
                     <div className="h-4 bg-muted rounded mb-2 w-20"></div>
                     <div className="h-8 bg-muted rounded w-16"></div>
@@ -210,24 +409,43 @@ const Admin: React.FC = () => {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="p-4 bg-secondary/20">
-                  <p className="text-muted-foreground text-sm">Total Users</p>
-                  <p className="text-2xl font-bold">{stats?.totalUsers.toLocaleString()}</p>
-                </Card>
-                <Card className="p-4 bg-secondary/20">
-                  <p className="text-muted-foreground text-sm">Cases Opened</p>
-                  <p className="text-2xl font-bold">{stats?.casesOpened.toLocaleString()}</p>
-                </Card>
-                <Card className="p-4 bg-secondary/20">
-                  <p className="text-muted-foreground text-sm">TON Volume</p>
-                  <p className="text-2xl font-bold">{stats?.totalVolume.toLocaleString()}</p>
-                </Card>
-                <Card className="p-4 bg-secondary/20">
-                  <p className="text-muted-foreground text-sm">Profit</p>
-                  <p className="text-2xl font-bold">{stats?.profit.toLocaleString()}</p>
-                </Card>
-              </div>
+              <>
+                <h3 className="text-md font-medium mt-4">Overall Statistics</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <Card className="p-4 bg-secondary/20">
+                    <p className="text-muted-foreground text-sm">Total Users</p>
+                    <p className="text-2xl font-bold">{stats?.totalUsers.toLocaleString()}</p>
+                  </Card>
+                  <Card className="p-4 bg-secondary/20">
+                    <p className="text-muted-foreground text-sm">Total Cases</p>
+                    <p className="text-2xl font-bold">{stats?.totalCases.toLocaleString()}</p>
+                  </Card>
+                  <Card className="p-4 bg-secondary/20">
+                    <p className="text-muted-foreground text-sm">Cases Opened</p>
+                    <p className="text-2xl font-bold">{stats?.casesOpened.toLocaleString()}</p>
+                  </Card>
+                  <Card className="p-4 bg-secondary/20">
+                    <p className="text-muted-foreground text-sm">TON Volume</p>
+                    <p className="text-2xl font-bold">{stats?.totalVolume.toLocaleString()}</p>
+                  </Card>
+                  <Card className="p-4 bg-secondary/20">
+                    <p className="text-muted-foreground text-sm">Net Profit</p>
+                    <p className="text-2xl font-bold">{stats?.profit.toLocaleString()}</p>
+                  </Card>
+                </div>
+                
+                <h3 className="text-md font-medium mt-4">Today's Performance</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="p-4 bg-secondary/10">
+                    <p className="text-muted-foreground text-sm">Today's Revenue</p>
+                    <p className="text-2xl font-bold">{stats?.today.revenue.toLocaleString()}</p>
+                  </Card>
+                  <Card className="p-4 bg-secondary/10">
+                    <p className="text-muted-foreground text-sm">Cases Opened Today</p>
+                    <p className="text-2xl font-bold">{stats?.today.casesOpened.toLocaleString()}</p>
+                  </Card>
+                </div>
+              </>
             )}
           </TabsContent>
           
@@ -281,8 +499,8 @@ const Admin: React.FC = () => {
                         <TableCell className="animate-pulse text-right"><div className="h-8 bg-muted rounded w-16 ml-auto"></div></TableCell>
                       </TableRow>
                     ))
-                  ) : users && users.length > 0 ? (
-                    users.map((user) => (
+                  ) : usersData && usersData.users && usersData.users.length > 0 ? (
+                    usersData.users.map((user) => (
                       <TableRow key={user._id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -316,25 +534,14 @@ const Admin: React.FC = () => {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="outline" size="icon" onClick={() => setSelectedUser(user)}>
-                                  <Edit className="h-4 w-4" />
-                                  <span className="sr-only">Edit</span>
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="sm:max-w-md">
-                                <DialogHeader>
-                                  <DialogTitle>Edit User</DialogTitle>
-                                </DialogHeader>
-                                <div className="py-4">
-                                  <div>
-                                    <p>User Details</p>
-                                    <p className="text-sm text-muted-foreground">This feature will be implemented later.</p>
-                                  </div>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              onClick={() => handleChangeUserRole(user._id, user.role)}
+                            >
+                              <User className="h-4 w-4" />
+                              <span className="sr-only">Change Role</span>
+                            </Button>
                             
                             <Button 
                               variant={user.isBlocked ? "default" : "destructive"} 
@@ -356,6 +563,25 @@ const Admin: React.FC = () => {
                 </TableBody>
               </Table>
             </div>
+            
+            {usersData && usersData.pagination && usersData.pagination.pages > 1 && (
+              <div className="flex justify-center mt-4">
+                <div className="flex gap-2">
+                  {Array.from({ length: usersData.pagination.pages }, (_, i) => (
+                    <Button 
+                      key={i} 
+                      variant={usersData.pagination.page === i + 1 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        // Handle pagination
+                      }}
+                    >
+                      {i + 1}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
           </TabsContent>
           
           {/* Cases Tab */}
@@ -379,10 +605,37 @@ const Admin: React.FC = () => {
                     <DialogHeader>
                       <DialogTitle>Create New Case</DialogTitle>
                     </DialogHeader>
-                    <div className="py-4">
-                      <p className="text-muted-foreground">
-                        Case creation form will be implemented in a future update.
-                      </p>
+                    <div className="space-y-4 py-4">
+                      <div className="grid grid-cols-1 gap-4">
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Case Name</label>
+                          <Input placeholder="Enter case name" />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Price (TON)</label>
+                          <Input type="number" placeholder="0.00" />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Image URL</label>
+                          <Input placeholder="https://..." />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Description</label>
+                          <Input placeholder="Case description" />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">Possible Gifts</label>
+                          <div className="text-xs text-muted-foreground mb-2">
+                            Add possible gifts with their chances (total must be 100%)
+                          </div>
+                          <Button variant="outline" size="sm">
+                            <Plus className="h-3 w-3 mr-1" /> Add Gift
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="flex justify-end mt-4">
+                        <Button>Create Case</Button>
+                      </div>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -424,6 +677,19 @@ const Admin: React.FC = () => {
                       <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
                         {caseItem.description || 'No description provided.'}
                       </p>
+                      
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium mb-2">Possible Gifts:</h4>
+                        <div className="text-xs text-muted-foreground">
+                          {caseItem.possibleGifts.map((gift, i) => (
+                            <div key={i} className="flex justify-between mb-1">
+                              <span>{gift.name}</span>
+                              <span>{gift.chance}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
                       <div className="flex justify-between gap-2">
                         <Dialog>
                           <DialogTrigger asChild>
@@ -434,17 +700,61 @@ const Admin: React.FC = () => {
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
-                              <DialogTitle>Edit Case</DialogTitle>
+                              <DialogTitle>Edit Case: {caseItem.name}</DialogTitle>
                             </DialogHeader>
-                            <div className="py-4">
-                              <p className="text-muted-foreground">
-                                Case edit form will be implemented in a future update.
-                              </p>
+                            <div className="space-y-4 py-4">
+                              <div className="grid grid-cols-1 gap-4">
+                                <div>
+                                  <label className="text-sm font-medium mb-1 block">Case Name</label>
+                                  <Input placeholder="Enter case name" defaultValue={caseItem.name} />
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium mb-1 block">Price (TON)</label>
+                                  <Input type="number" placeholder="0.00" defaultValue={caseItem.price} />
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium mb-1 block">Image URL</label>
+                                  <Input placeholder="https://..." defaultValue={caseItem.imageUrl} />
+                                </div>
+                                <div>
+                                  <label className="text-sm font-medium mb-1 block">Status</label>
+                                  <div className="flex items-center gap-2">
+                                    <input type="checkbox" id={`active-${caseItem._id}`} defaultChecked={caseItem.isActive} />
+                                    <label htmlFor={`active-${caseItem._id}`}>Active</label>
+                                  </div>
+                                </div>
+                                
+                                <div>
+                                  <label className="text-sm font-medium mb-1 block">Gift Probabilities</label>
+                                  <div className="border rounded p-2">
+                                    {caseItem.possibleGifts.map((gift, i) => (
+                                      <div key={i} className="flex justify-between items-center mb-2 gap-2">
+                                        <span className="text-sm">{gift.name}</span>
+                                        <Input 
+                                          type="number" 
+                                          className="w-20" 
+                                          defaultValue={gift.chance} 
+                                          min={0}
+                                          max={100}
+                                        />
+                                        <span>%</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex justify-end mt-4">
+                                <Button>Save Changes</Button>
+                              </div>
                             </div>
                           </DialogContent>
                         </Dialog>
                         
-                        <Button variant="destructive" size="icon">
+                        <Button 
+                          variant="destructive" 
+                          size="icon"
+                          onClick={() => handleDeleteCase(caseItem._id, caseItem.name)}
+                        >
                           <Trash className="h-4 w-4" />
                           <span className="sr-only">Delete</span>
                         </Button>
@@ -472,7 +782,7 @@ const Admin: React.FC = () => {
                       </DialogHeader>
                       <div className="py-4">
                         <p className="text-muted-foreground">
-                          Case creation form will be implemented in a future update.
+                          Fill out the case details to add it to your platform.
                         </p>
                       </div>
                     </DialogContent>
@@ -481,8 +791,160 @@ const Admin: React.FC = () => {
               )}
             </div>
           </TabsContent>
+          
+          {/* Wallet Tab */}
+          <TabsContent value="wallet" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-medium">TON Wallet Management</h2>
+              <Button variant="outline" size="sm" onClick={() => refetchWalletInfo()} disabled={isLoadingWallet}>
+                <RefreshCw className={`w-4 h-4 mr-1 ${isLoadingWallet ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+            
+            {isLoadingWallet ? (
+              <Card className="p-4 animate-pulse">
+                <div className="space-y-3">
+                  <div className="h-4 bg-muted rounded w-1/4"></div>
+                  <div className="h-8 bg-muted rounded w-full"></div>
+                  <div className="h-4 bg-muted rounded w-1/3 mt-4"></div>
+                  <div className="h-6 bg-muted rounded w-1/6"></div>
+                </div>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="p-4">
+                  <h3 className="font-medium mb-2">Wallet Settings</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm text-muted-foreground block">Wallet Address</label>
+                      <div className="flex mt-1 gap-2">
+                        <Input 
+                          value={walletInfo?.walletAddress || ''} 
+                          placeholder="No wallet address set" 
+                          className="font-mono text-sm"
+                          onChange={(e) => {/* Handle input change */}}
+                        />
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Update TON Wallet</DialogTitle>
+                            </DialogHeader>
+                            <div className="py-4 space-y-4">
+                              <p className="text-sm text-muted-foreground">
+                                Enter the new TON wallet address. This wallet will be used for all platform transactions.
+                              </p>
+                              <Input 
+                                placeholder="Enter wallet address" 
+                                className="font-mono"
+                                defaultValue={walletInfo?.walletAddress || ''}
+                              />
+                              <div className="flex justify-end">
+                                <Button onClick={() => handleUpdateWallet("EQDWFD...mpleNew")}>
+                                  Update Wallet
+                                </Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm text-muted-foreground block">Available Balance</label>
+                      <div className="text-2xl font-bold flex items-center mt-1">
+                        <DollarSign className="h-5 w-5 mr-1 text-muted-foreground" />
+                        {walletInfo?.walletBalance || 0} TON
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+                
+                <Card className="p-4">
+                  <h3 className="font-medium mb-2">Financial Overview</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Total Revenue</span>
+                      <span className="font-medium">{stats?.totalVolume || 0} TON</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b">
+                      <span className="text-muted-foreground">Net Profit</span>
+                      <span className="font-medium">{stats?.profit || 0} TON</span>
+                    </div>
+                    <div className="flex justify-between py-2">
+                      <span className="text-muted-foreground">Pending Withdrawals</span>
+                      <span className="font-medium">0 TON</span>
+                    </div>
+                  </div>
+                </Card>
+                
+                <Card className="p-4 col-span-1 md:col-span-2">
+                  <h3 className="font-medium mb-4">Recent Withdrawals</h3>
+                  {walletInfo?.withdrawals && walletInfo.withdrawals.length > 0 ? (
+                    <div className="border rounded">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>User</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Date</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {walletInfo.withdrawals.map((withdrawal, i) => (
+                            <TableRow key={i}>
+                              <TableCell>{withdrawal.user?.username || 'Unknown'}</TableCell>
+                              <TableCell>{withdrawal.amount} TON</TableCell>
+                              <TableCell>
+                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                  withdrawal.status === 'completed' 
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' 
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300'
+                                }`}>
+                                  {withdrawal.status}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                {new Date(withdrawal.createdAt).toLocaleDateString()}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 border rounded">
+                      <p className="text-muted-foreground">No withdrawal transactions yet</p>
+                    </div>
+                  )}
+                </Card>
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
+      
+      {/* Confirmation Dialog */}
+      <AlertDialog open={confirmationDialog.isOpen} onOpenChange={(open) => setConfirmationDialog(prev => ({ ...prev, isOpen: open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmationDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmationDialog.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmationDialog.onConfirm}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
